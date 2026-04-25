@@ -9,18 +9,19 @@
 class OctreeNode
 {
 public:
-    OctreeNode(const QVector3D& minBound, const QVector3D& maxBound);
+    OctreeNode(const QVector3D& minBound, const QVector3D& maxBound, 
+               const PointCloudData* pointCloudData);
     ~OctreeNode();
     
     bool isLeaf() const;
     bool containsPoint(const QVector3D& point) const;
     
-    void insert(const PointXYZRGBI& point, size_t maxPointsPerNode, size_t maxDepth, size_t currentDepth = 0);
+    void insert(size_t pointIndex, size_t maxPointsPerNode, size_t maxDepth, size_t currentDepth = 0);
     
-    void getVisiblePoints(const QVector3D& cameraPos, float viewDistance, 
-                          std::vector<PointXYZRGBI>& visiblePoints) const;
+    void getVisibleIndices(const QVector3D& cameraPos, float viewDistance, 
+                           std::vector<size_t>& visibleIndices) const;
     
-    void getAllPoints(std::vector<PointXYZRGBI>& allPoints) const;
+    void getAllIndices(std::vector<size_t>& allIndices) const;
     
     const QVector3D& getMinBound() const { return m_minBound; }
     const QVector3D& getMaxBound() const { return m_maxBound; }
@@ -28,7 +29,7 @@ public:
     float getRadius() const { return m_radius; }
 
 private:
-    void subdivide();
+    void subdivide(size_t maxPointsPerNode, size_t maxDepth, size_t currentDepth);
     int getOctantContainingPoint(const QVector3D& point) const;
     
     QVector3D m_minBound;
@@ -36,7 +37,8 @@ private:
     QVector3D m_center;
     float m_radius;
     
-    std::vector<PointXYZRGBI> m_points;
+    const PointCloudData* m_pointCloudData;
+    std::vector<size_t> m_indices;
     std::unique_ptr<OctreeNode> m_children[8];
     bool m_isLeaf;
 };
@@ -50,6 +52,9 @@ public:
     void build(const PointCloudData& pointCloud);
     void clear();
     
+    std::vector<size_t> getVisibleIndices(const QVector3D& cameraPos, float viewDistance) const;
+    std::vector<size_t> getAllIndices() const;
+    
     std::vector<PointXYZRGBI> getVisiblePoints(const QVector3D& cameraPos, float viewDistance) const;
     std::vector<PointXYZRGBI> getAllPoints() const;
     
@@ -59,9 +64,12 @@ public:
     size_t getMaxPointsPerNode() const { return m_maxPointsPerNode; }
     size_t getMaxDepth() const { return m_maxDepth; }
     bool isEmpty() const { return !m_root; }
+    
+    const PointCloudData* getPointCloudData() const { return m_pointCloudData; }
 
 private:
     std::unique_ptr<OctreeNode> m_root;
+    const PointCloudData* m_pointCloudData;
     size_t m_maxPointsPerNode;
     size_t m_maxDepth;
 };

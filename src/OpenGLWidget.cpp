@@ -292,22 +292,17 @@ void OpenGLWidget::renderPointCloud()
     
     if (m_useOctree && m_octree && !m_octree->isEmpty())
     {
-        std::vector<PointXYZRGBI> pointsToRender;
-        pointsToRender = m_octree->getVisiblePoints(m_cameraPosition, m_viewDistance);
+        std::vector<size_t> visibleIndices = m_octree->getVisibleIndices(m_cameraPosition, m_viewDistance);
+        const auto& points = m_pointCloud->getPoints();
         
-        for (const auto& point : pointsToRender)
+        for (size_t idx : visibleIndices)
         {
-            if (point.colorValid)
+            if (idx < points.size())
             {
+                const PointXYZRGBI& point = points[idx];
                 glColor3ub(point.cachedColor[0], point.cachedColor[1], point.cachedColor[2]);
+                glVertex3f(point.xyz.x(), point.xyz.y(), point.xyz.z());
             }
-            else
-            {
-                PointXYZRGBI& mutablePoint = const_cast<PointXYZRGBI&>(point);
-                computePointColor(mutablePoint);
-                glColor3ub(point.cachedColor[0], point.cachedColor[1], point.cachedColor[2]);
-            }
-            glVertex3f(point.xyz.x(), point.xyz.y(), point.xyz.z());
         }
     }
     else
