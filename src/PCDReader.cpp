@@ -200,37 +200,63 @@ bool PCDReader::readBinary(std::ifstream& file, PointCloudData& pointCloud,
     }
     
     size_t pointSize = fields.size() * sizeof(float);
-    std::vector<char> buffer(pointSize);
     
-    for (size_t i = 0; i < points; ++i)
+    pointCloud.reserve(points);
+    
+    const size_t batchSize = PointCloudData::BATCH_READ_SIZE / pointSize;
+    std::vector<char> buffer(batchSize * pointSize);
+    std::vector<PointXYZRGBI> batchPoints;
+    batchPoints.reserve(batchSize);
+    
+    size_t totalRead = 0;
+    
+    while (totalRead < points)
     {
-        if (!file.read(buffer.data(), pointSize))
+        size_t pointsToRead = std::min(batchSize, points - totalRead);
+        size_t bytesToRead = pointsToRead * pointSize;
+        
+        if (!file.read(buffer.data(), bytesToRead))
         {
             break;
         }
         
-        float* values = reinterpret_cast<float*>(buffer.data());
-        
-        PointXYZRGBI point;
-        point.xyz.x() = values[xIdx];
-        point.xyz.y() = values[yIdx];
-        point.xyz.z() = values[zIdx];
-        
-        if (intensityIdx >= 0)
+        size_t actuallyRead = static_cast<size_t>(file.gcount()) / pointSize;
+        if (actuallyRead == 0)
         {
-            point.intensity = values[intensityIdx];
+            break;
         }
         
-        if (rgbIdx >= 0)
+        batchPoints.clear();
+        
+        for (size_t i = 0; i < actuallyRead; ++i)
         {
-            uint32_t rgb = *reinterpret_cast<uint32_t*>(&values[rgbIdx]);
-            point.rgb[0] = ((rgb >> 16) & 0xFF) / 255.0f;
-            point.rgb[1] = ((rgb >> 8) & 0xFF) / 255.0f;
-            point.rgb[2] = (rgb & 0xFF) / 255.0f;
+            const char* pointData = buffer.data() + i * pointSize;
+            const float* values = reinterpret_cast<const float*>(pointData);
+            
+            PointXYZRGBI point;
+            point.xyz.setX(values[xIdx]);
+            point.xyz.setY(values[yIdx]);
+            point.xyz.setZ(values[zIdx]);
+            
+            if (intensityIdx >= 0)
+            {
+                point.intensity = values[intensityIdx];
+            }
+            
+            if (rgbIdx >= 0)
+            {
+                uint32_t rgb = *reinterpret_cast<const uint32_t*>(&values[rgbIdx]);
+                point.rgb[0] = ((rgb >> 16) & 0xFF) / 255.0f;
+                point.rgb[1] = ((rgb >> 8) & 0xFF) / 255.0f;
+                point.rgb[2] = (rgb & 0xFF) / 255.0f;
+            }
+            
+            batchPoints.push_back(point);
         }
         
-        pointCloud.addPoint(point);
+        pointCloud.addPointsBatch(batchPoints);
+        totalRead += actuallyRead;
     }
     
-    return true;
+    return totalRead > 0;
 }

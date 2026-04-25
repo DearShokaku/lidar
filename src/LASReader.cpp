@@ -95,35 +95,71 @@ template<typename PointType>
 bool LASReader::readPoints(std::ifstream& file, PointCloudData& pointCloud, 
                            const LASHeader& header, size_t points)
 {
-    PointType point;
+    const size_t pointSize = sizeof(PointType);
+    const size_t batchSize = PointCloudData::BATCH_READ_SIZE / pointSize;
     
-    for (size_t i = 0; i < points; ++i)
+    pointCloud.reserve(points);
+    
+    std::vector<char> buffer(batchSize * pointSize);
+    std::vector<PointXYZRGBI> batchPoints;
+    batchPoints.reserve(batchSize);
+    
+    size_t totalRead = 0;
+    
+    while (totalRead < points)
     {
-        if (!file.read(reinterpret_cast<char*>(&point), sizeof(PointType)))
+        size_t pointsToRead = std::min(batchSize, points - totalRead);
+        size_t bytesToRead = pointsToRead * pointSize;
+        
+        if (!file.read(buffer.data(), bytesToRead))
         {
             break;
         }
         
-        PointXYZRGBI pcdPoint;
-        
-        pcdPoint.xyz.x() = static_cast<float>(point.x * header.xScaleFactor + header.xOffset);
-        pcdPoint.xyz.y() = static_cast<float>(point.y * header.yScaleFactor + header.yOffset);
-        pcdPoint.xyz.z() = static_cast<float>(point.z * header.zScaleFactor + header.zOffset);
-        
-        pcdPoint.intensity = static_cast<float>(point.intensity);
-        
-        if constexpr (std::is_same<PointType, LASPointFormat2>::value || 
-                      std::is_same<PointType, LASPointFormat3>::value)
+        size_t actuallyRead = static_cast<size_t>(file.gcount()) / pointSize;
+        if (actuallyRead == 0)
         {
-            pcdPoint.rgb[0] = static_cast<float>(point.red) / 65535.0f;
-            pcdPoint.rgb[1] = static_cast<float>(point.green) / 65535.0f;
-            pcdPoint.rgb[2] = static_cast<float>(point.blue) / 65535.0f;
+            break;
         }
         
-        pointCloud.addPoint(pcdPoint);
+        batchPoints.clear();
+        
+        for (size_t i = 0; i < actuallyRead; ++i)
+        {
+            const PointType* lasPoint = reinterpret_cast<const PointType*>(
+                buffer.data() + i * pointSize
+            );
+            
+            PointXYZRGBI pcdPoint;
+            
+            pcdPoint.xyz.setX(static_cast<float>(
+                lasPoint->x * header.xScaleFactor + header.xOffset
+            ));
+            pcdPoint.xyz.setY(static_cast<float>(
+                lasPoint->y * header.yScaleFactor + header.yOffset
+            ));
+            pcdPoint.xyz.setZ(static_cast<float>(
+                lasPoint->z * header.zScaleFactor + header.zOffset
+            ));
+            
+            pcdPoint.intensity = static_cast<float>(lasPoint->intensity);
+            
+            if constexpr (std::is_same<PointType, LASPointFormat2>::value || 
+                          std::is_same<PointType, LASPointFormat3>::value)
+            {
+                pcdPoint.rgb[0] = static_cast<float>(lasPoint->red) / 65535.0f;
+                pcdPoint.rgb[1] = static_cast<float>(lasPoint->green) / 65535.0f;
+                pcdPoint.rgb[2] = static_cast<float>(lasPoint->blue) / 65535.0f;
+            }
+            
+            batchPoints.push_back(pcdPoint);
+        }
+        
+        pointCloud.addPointsBatch(batchPoints);
+        totalRead += actuallyRead;
     }
     
-    return true;
+    return totalRead > 0;
 }
 
 template bool LASReader::readPoints<LASPointFormat0>(std::ifstream&, PointCloudData&, 

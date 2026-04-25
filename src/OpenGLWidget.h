@@ -7,6 +7,7 @@
 #include <QPoint>
 #include <QVector3D>
 #include <memory>
+#include <vector>
 
 #include "PointCloudData.h"
 #include "Octree.h"
@@ -33,6 +34,9 @@ public:
     
     void setViewDistance(float distance) { m_viewDistance = distance; update(); }
     float getViewDistance() const { return m_viewDistance; }
+    
+    void invalidateColorCache();
+    void updateColorCache();
 
 protected:
     void initializeGL() override;
@@ -49,6 +53,7 @@ private:
     void renderPointCloud();
     void renderAxis();
     void setupProjection();
+    void computePointColor(PointXYZRGBI& point);
     
     std::shared_ptr<PointCloudData> m_pointCloud;
     std::shared_ptr<Octree> m_octree;
@@ -75,6 +80,9 @@ private:
     bool m_leftButtonPressed;
     bool m_rightButtonPressed;
     bool m_midButtonPressed;
+    
+    ColorMapType m_cachedColorMapType;
+    bool m_colorCacheValid;
 };
 
 #endif // OPENGLWIDGET_H

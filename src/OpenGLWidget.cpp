@@ -23,6 +23,8 @@ OpenGLWidget::OpenGLWidget(QWidget *parent)
     , m_leftButtonPressed(false)
     , m_rightButtonPressed(false)
     , m_midButtonPressed(false)
+    , m_cachedColorMapType(ColorMapType::Original)
+    , m_colorCacheValid(false)
 {
     setFocusPolicy(Qt::StrongFocus);
 }
@@ -34,6 +36,7 @@ OpenGLWidget::~OpenGLWidget()
 void OpenGLWidget::setPointCloud(std::shared_ptr<PointCloudData> pointCloud)
 {
     m_pointCloud = pointCloud;
+    m_colorCacheValid = false;
     
     if (m_pointCloud && !m_pointCloud->isEmpty())
     {
@@ -52,7 +55,119 @@ void OpenGLWidget::setOctree(std::shared_ptr<Octree> octree)
 void OpenGLWidget::setColorMapper(std::shared_ptr<ColorMapper> colorMapper)
 {
     m_colorMapper = colorMapper;
+    m_colorCacheValid = false;
     update();
+}
+
+void OpenGLWidget::invalidateColorCache()
+{
+    m_colorCacheValid = false;
+    if (m_pointCloud)
+    {
+        m_pointCloud->invalidateColors();
+    }
+    update();
+}
+
+void OpenGLWidget::updateColorCache()
+{
+    if (!m_pointCloud || m_pointCloud->isEmpty())
+    {
+        m_colorCacheValid = false;
+        return;
+    }
+    
+    ColorMapType currentType = m_colorMapper ? m_colorMapper->getColorMapType() : ColorMapType::Original;
+    
+    if (m_colorCacheValid && m_cachedColorMapType == currentType)
+    {
+        return;
+    }
+    
+    auto& points = m_pointCloud->getPointsRef();
+    
+    if (currentType == ColorMapType::Original)
+    {
+        for (auto& point : points)
+        {
+            point.cachedColor[0] = static_cast<uint8_t>(point.rgb[0] * 255.0f + 0.5f);
+            point.cachedColor[1] = static_cast<uint8_t>(point.rgb[1] * 255.0f + 0.5f);
+            point.cachedColor[2] = static_cast<uint8_t>(point.rgb[2] * 255.0f + 0.5f);
+            point.colorValid = true;
+        }
+    }
+    else if (m_colorMapper)
+    {
+        if (currentType == ColorMapType::Intensity)
+        {
+            for (auto& point : points)
+            {
+                m_colorMapper->mapIntensityToColorUint8(
+                    point.intensity, 
+                    point.cachedColor[0], 
+                    point.cachedColor[1], 
+                    point.cachedColor[2]
+                );
+                point.colorValid = true;
+            }
+        }
+        else
+        {
+            for (auto& point : points)
+            {
+                m_colorMapper->mapHeightToColorUint8(
+                    point.xyz.z(), 
+                    point.cachedColor[0], 
+                    point.cachedColor[1], 
+                    point.cachedColor[2]
+                );
+                point.colorValid = true;
+            }
+        }
+    }
+    
+    m_cachedColorMapType = currentType;
+    m_colorCacheValid = true;
+}
+
+void OpenGLWidget::computePointColor(PointXYZRGBI& point)
+{
+    if (!m_colorMapper)
+    {
+        point.cachedColor[0] = static_cast<uint8_t>(point.rgb[0] * 255.0f + 0.5f);
+        point.cachedColor[1] = static_cast<uint8_t>(point.rgb[1] * 255.0f + 0.5f);
+        point.cachedColor[2] = static_cast<uint8_t>(point.rgb[2] * 255.0f + 0.5f);
+        point.colorValid = true;
+        return;
+    }
+    
+    ColorMapType currentType = m_colorMapper->getColorMapType();
+    
+    if (currentType == ColorMapType::Original)
+    {
+        point.cachedColor[0] = static_cast<uint8_t>(point.rgb[0] * 255.0f + 0.5f);
+        point.cachedColor[1] = static_cast<uint8_t>(point.rgb[1] * 255.0f + 0.5f);
+        point.cachedColor[2] = static_cast<uint8_t>(point.rgb[2] * 255.0f + 0.5f);
+    }
+    else if (currentType == ColorMapType::Intensity)
+    {
+        m_colorMapper->mapIntensityToColorUint8(
+            point.intensity,
+            point.cachedColor[0],
+            point.cachedColor[1],
+            point.cachedColor[2]
+        );
+    }
+    else
+    {
+        m_colorMapper->mapHeightToColorUint8(
+            point.xyz.z(),
+            point.cachedColor[0],
+            point.cachedColor[1],
+            point.cachedColor[2]
+        );
+    }
+    point.colorValid = true;
 }
 
 void OpenGLWidget::resetCamera()
@@ -170,53 +285,40 @@ void OpenGLWidget::renderPointCloud()
         return;
     }
     
+    updateColorCache();
+    
     glPointSize(m_pointSize);
     glBegin(GL_POINTS);
     
-    std::vector<PointXYZRGBI> pointsToRender;
-    
     if (m_useOctree && m_octree && !m_octree->isEmpty())
     {
+        std::vector<PointXYZRGBI> pointsToRender;
         pointsToRender = m_octree->getVisiblePoints(m_cameraPosition, m_viewDistance);
+        
+        for (const auto& point : pointsToRender)
+        {
+            if (point.colorValid)
+            {
+                glColor3ub(point.cachedColor[0], point.cachedColor[1], point.cachedColor[2]);
+            }
+            else
+            {
+                PointXYZRGBI& mutablePoint = const_cast<PointXYZRGBI&>(point);
+                computePointColor(mutablePoint);
+                glColor3ub(point.cachedColor[0], point.cachedColor[1], point.cachedColor[2]);
+            }
+            glVertex3f(point.xyz.x(), point.xyz.y(), point.xyz.z());
+        }
     }
     else
     {
-        pointsToRender = m_pointCloud->getPoints();
-    }
-    
-    ColorMapType colorMapType = m_colorMapper ? m_colorMapper->getColorMapType() : ColorMapType::Original;
-    
-    for (const auto& point : pointsToRender)
-    {
-        float r, g, b;
+        const auto& points = m_pointCloud->getPoints();
         
-        if (m_colorMapper)
+        for (const auto& point : points)
         {
-            switch (colorMapType)
-            {
-                case ColorMapType::Height:
-                    m_colorMapper->mapHeightToColor(point.xyz.z(), r, g, b);
-                    break;
-                case ColorMapType::Intensity:
-                    m_colorMapper->mapIntensityToColor(point.intensity, r, g, b);
-                    break;
-                case ColorMapType::Original:
-                default:
-                    r = point.rgb[0];
-                    g = point.rgb[1];
-                    b = point.rgb[2];
-                    break;
-            }
+            glColor3ub(point.cachedColor[0], point.cachedColor[1], point.cachedColor[2]);
+            glVertex3f(point.xyz.x(), point.xyz.y(), point.xyz.z());
         }
-        else
-        {
-            r = point.rgb[0];
-            g = point.rgb[1];
-            b = point.rgb[2];
-        }
-        
-        glColor3f(r, g, b);
-        glVertex3f(point.xyz.x(), point.xyz.y(), point.xyz.z());
     }
     
     glEnd();

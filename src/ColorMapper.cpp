@@ -187,3 +187,58 @@ void ColorMapper::grayscaleColorMap(float t, float& r, float& g, float& b)
     g = t;
     b = t;
 }
+
+void ColorMapper::mapToColorUint8(float value, float minValue, float maxValue,
+                                   uint8_t& r, uint8_t& g, uint8_t& b) const
+{
+    float fr, fg, fb;
+    mapToColor(value, minValue, maxValue, fr, fg, fb);
+    r = static_cast<uint8_t>(fr * 255.0f + 0.5f);
+    g = static_cast<uint8_t>(fg * 255.0f + 0.5f);
+    b = static_cast<uint8_t>(fb * 255.0f + 0.5f);
+}
+
+void ColorMapper::mapHeightToColorUint8(float height, uint8_t& r, uint8_t& g, uint8_t& b) const
+{
+    mapToColorUint8(height, m_minHeight, m_maxHeight, r, g, b);
+}
+
+void ColorMapper::mapIntensityToColorUint8(float intensity, uint8_t& r, uint8_t& g, uint8_t& b) const
+{
+    mapToColorUint8(intensity, m_minIntensity, m_maxIntensity, r, g, b);
+}
+
+void ColorMapper::rainbowColorMapUint8(float t, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+    float fr, fg, fb;
+    rainbowColorMap(t, fr, fg, fb);
+    r = static_cast<uint8_t>(fr * 255.0f + 0.5f);
+    g = static_cast<uint8_t>(fg * 255.0f + 0.5f);
+    b = static_cast<uint8_t>(fb * 255.0f + 0.5f);
+}
+
+void ColorMapper::heatColorMapUint8(float t, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+    float fr, fg, fb;
+    heatColorMap(t, fr, fg, fb);
+    r = static_cast<uint8_t>(fr * 255.0f + 0.5f);
+    g = static_cast<uint8_t>(fg * 255.0f + 0.5f);
+    b = static_cast<uint8_t>(fb * 255.0f + 0.5f);
+}
+
+void ColorMapper::viridisColorMapUint8(float t, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+    float fr, fg, fb;
+    viridisColorMap(t, fr, fg, fb);
+    r = static_cast<uint8_t>(fr * 255.0f + 0.5f);
+    g = static_cast<uint8_t>(fg * 255.0f + 0.5f);
+    b = static_cast<uint8_t>(fb * 255.0f + 0.5f);
+}
+
+void ColorMapper::grayscaleColorMapUint8(float t, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+    uint8_t val = static_cast<uint8_t>(t * 255.0f + 0.5f);
+    r = val;
+    g = val;
+    b = val;
+}

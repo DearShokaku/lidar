@@ -339,7 +339,7 @@ void PointCloudViewer::colorMapChanged(int index)
             m_colorMapper->setColorMapType(static_cast<ColorMapType>(value));
             if (m_openGLWidget)
             {
-                m_openGLWidget->update();
+                m_openGLWidget->invalidateColorCache();
             }
         }
     }
